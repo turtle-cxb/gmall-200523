@@ -36,7 +36,7 @@ object Handletools {
       !boolean
     })*/
 
-    //第二中方法
+    //第二种方法
    /* val filterDstream: DStream[Startuplog] = dstream.mapPartitions(iter => {
       val redisClient: Jedis = RedisUtil.getJedisClient
       val startuplogs: Iterator[Startuplog] = iter.filter(startLog => {
@@ -62,14 +62,6 @@ object Handletools {
     filterDstream
 
   }
-
-
-
-
-
-
-
-
   //将数据写入redis
   def writeRedis(dstream : DStream[Startuplog]) = {
 

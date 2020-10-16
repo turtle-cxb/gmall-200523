@@ -7,7 +7,7 @@ import com.alibaba.fastjson.JSON
 import com.atguigu.bean.Startuplog
 import com.atguigu.constants.GmallConstant
 import com.atguigu.handle.Handletools
-import com.atguigu.utils.MykafkaUtil
+import com.atguigu.utils.{MykafkaUtil, PropertiesUtil}
 import org.apache.hadoop.conf.Configuration
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.spark.SparkConf
@@ -50,10 +50,11 @@ object DauApp {
     //数据写入Phoenix
     dCommonBatchDstream.foreachRDD{rdd=>
       rdd.saveToPhoenix(
-        "GMALL2020_DAU",
-        Seq("MID", "UID", "APPID", "AREA", "OS", "CH", "TYPE", "VS", "LOGDATE", "LOGHOUR", "TS") ,
+        PropertiesUtil.load("config.properties").getProperty("phoenix.dua.table"),
+//        Seq("MID", "UID", "APPID", "AREA", "OS", "CH", "TYPE", "VS", "LOGDATE", "LOGHOUR", "TS") ,
+        classOf[Startuplog].getDeclaredFields.map(_.getName.toUpperCase()),
         new Configuration,
-        Some("hadoop107,hadoop108,hadoop109:2181"))
+        Some(PropertiesUtil.load("config.properties").getProperty("phoenix.zk.url")))
     }
 
     ssc.start()
