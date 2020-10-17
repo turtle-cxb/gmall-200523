@@ -20,6 +20,8 @@ public class PublisherController {
     @RequestMapping("realtime-total")
     public String getDayTotalCount(@RequestParam("date") String date){
         Integer dayTotalCount = publisherServer.getCount(date);
+        Double orderAmount = publisherServer.getOrderAmount(date);
+
 
         HashMap<String, Object> map = new HashMap<>();
         map.put("id","dau");
@@ -31,23 +33,43 @@ public class PublisherController {
         map1.put("name","新增设备");
         map1.put("value",233);
 
+        HashMap<String, Object> orderMap = new HashMap<>();
+        orderMap.put("id","order_amount");
+        orderMap.put("name","新增交易额");
+        orderMap.put("value",orderAmount);
+
         ArrayList<Map<String, Object>> arrayList = new ArrayList<>();
         arrayList.add(map);
         arrayList.add(map1);
+        arrayList.add(orderMap);
+
+
 
         return JSON.toJSONString(arrayList);
     }
 
     @RequestMapping("realtime-hours")
     public String getHoursCount(@RequestParam("id") String id,@RequestParam("date") String date){
-        Map todayMap = publisherServer.getHourCount(date);
-        //利用LocalDate类进行日期的计算
-        Map yesterdayMap = publisherServer.getHourCount(LocalDate.parse(date).plusDays(-1).toString());
-        HashMap hashMap = new HashMap();
-        hashMap.put("yesterday",yesterdayMap);
-        hashMap.put("today",todayMap);
 
+
+        HashMap hashMap = new HashMap();
+        Map todayHashMap = new HashMap();
+        Map yesterdayMap = new HashMap();
+
+        if ("dau".equals(id)){
+            todayHashMap = publisherServer.getHourCount(date);
+            //利用LocalDate类进行日期的计算
+            yesterdayMap = publisherServer.getHourCount(LocalDate.parse(date).plusDays(-1).toString());
+
+        }else if("order_amount".equals(id)){
+            todayHashMap = publisherServer.getOrderHourAmount(date);
+            yesterdayMap = publisherServer.getOrderHourAmount(LocalDate.parse(date).plusDays(-1).toString());
+        }
+        hashMap.put("yesterday",yesterdayMap);
+        hashMap.put("today",todayHashMap);
         return JSON.toJSONString(hashMap);
+
+
 
 
     }
