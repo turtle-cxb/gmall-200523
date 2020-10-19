@@ -41,10 +41,9 @@ object WarningApp {
       eventLog.logHour=date(1)
       (eventLog.mid, eventLog)
     })
-    //对mid进行分组
-    val groupbyDstream: DStream[(String, Iterable[EventLog])] = toupDstream.groupByKey()
-    //进行5分钟的开窗
-    val windowDstream: DStream[(String, Iterable[EventLog])] = groupbyDstream.window(Minutes(5))
+    //对mid进行分组并进行5分钟的开窗
+    val windowDstream: DStream[(String, Iterable[EventLog])] = toupDstream.window(Minutes(5)).groupByKey()
+    //
     //判断iterable中的eventLog中的uid个数是否超过或等于3，看事件类型是否有点击商品行为，若uid超过或者等于3且无点击商品行为
     //则需要生成预警日志
     val booleanToWarningDstream: DStream[(Boolean, CouponAlertInfo)] = windowDstream.map { case (mid, iter) => {

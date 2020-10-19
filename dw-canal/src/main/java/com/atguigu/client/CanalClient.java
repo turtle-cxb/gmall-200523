@@ -12,6 +12,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import javax.sql.rowset.RowSetMetaDataImpl;
 import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.Random;
 
 public class CanalClient {
     public static void main(String[] args) {
@@ -75,31 +76,36 @@ public class CanalClient {
 
     private static void handler(String tableName, CanalEntry.EventType eventType, List<CanalEntry.RowData> rowDatasList) {
         if(tableName.equals("order_info") && eventType.equals(CanalEntry.EventType.INSERT)){
-            for (CanalEntry.RowData rowData : rowDatasList) {
-                JSONObject jsonObject = new JSONObject();
-                for (CanalEntry.Column column : rowData.getAfterColumnsList()) {
-                     jsonObject.put(column.getName(),column.getValue());
+            rowDataSender(rowDatasList,GmallConstant.KAFKA_TOPIC_ORDER_INFO);
 
-                }
-               //将数据写入kafka
-                System.out.println(jsonObject);
-                MyKafkaSender.send(GmallConstant.KAFKA_TOPIC_ORDER_INFO,jsonObject.toJSONString());
-            }
         }else if(tableName.equals("user_info") && (eventType.equals(CanalEntry.EventType.INSERT ) || (eventType.equals(CanalEntry.EventType.UPDATE)))){
-            for (CanalEntry.RowData rowData : rowDatasList) {
-                JSONObject jsonObject = new JSONObject();
-                for (CanalEntry.Column column : rowData.getAfterColumnsList()) {
-                    jsonObject.put(column.getName(), column.getValue());
+            rowDataSender(rowDatasList,GmallConstant.KAFKA_TOPIC_USER_INFO);
 
-
-                }
-                System.out.println(jsonObject);
-                //将数据写入kafka
-                MyKafkaSender.send(GmallConstant.KAFKA_TOPIC_USER_INFO,jsonObject.toJSONString());
+        } else if("order_detail".equals(tableName) && eventType.equals(CanalEntry.EventType.INSERT)){
+            rowDataSender(rowDatasList,GmallConstant.KAFKA_TOPIC_ORDER_DETAIL_INFO);
+            try {
+                Thread.sleep(new Random().nextInt(5)*1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
         }
+    }
 
-
+    public static void rowDataSender(List<CanalEntry.RowData> rowDatasList,String topic){
+        for (CanalEntry.RowData rowData : rowDatasList) {
+            List<CanalEntry.Column> afterColumnsList = rowData.getAfterColumnsList();
+            JSONObject jsonObject = new JSONObject();
+            for (CanalEntry.Column column : afterColumnsList) {
+                jsonObject.put(column.getName(),column.getValue());
+            }
+            System.out.println(jsonObject);
+            MyKafkaSender.send(topic,jsonObject.toJSONString());
+        }
 
     }
+
+
+
+
+
 }
