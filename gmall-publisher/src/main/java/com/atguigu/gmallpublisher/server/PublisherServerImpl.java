@@ -1,10 +1,29 @@
 package com.atguigu.gmallpublisher.server;
 
+import com.alibaba.fastjson.JSON;
+import com.atguigu.gmallpublisher.bean.Options;
+import com.atguigu.gmallpublisher.bean.Stat;
 import com.atguigu.gmallpublisher.mapper.OrderInfoMapper;
 import com.atguigu.gmallpublisher.mapper.PublisherMapper;
+import com.sun.org.apache.xpath.internal.operations.Bool;
+import io.searchbox.client.JestClient;
+import io.searchbox.core.Search;
+import io.searchbox.core.SearchResult;
+import io.searchbox.core.search.aggregation.TermsAggregation;
+import jdk.nashorn.internal.runtime.regexp.joni.constants.EncloseType;
+import org.elasticsearch.action.support.QuerySourceBuilder;
+import org.elasticsearch.index.query.BoolQueryBuilder;
+import org.elasticsearch.index.query.MatchQueryBuilder;
+import org.elasticsearch.index.query.TermQueryBuilder;
+import org.elasticsearch.search.aggregations.AggregationBuilder;
+import org.elasticsearch.search.aggregations.AggregationBuilders;
+import org.elasticsearch.search.aggregations.bucket.terms.TermsBuilder;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +56,8 @@ public class PublisherServerImpl implements PublisherServer {
     PublisherMapper publisherMapper;
     @Autowired
     OrderInfoMapper orderInfoMapper;
+    @Autowired
+    JestClient jestClient;
     @Override
     public Integer getCount(String date) {
         Integer dayCount = publisherMapper.selectDauTotal(date);
@@ -72,6 +93,94 @@ public class PublisherServerImpl implements PublisherServer {
         }
         return orderHashMap;
 
+    }
+
+    @Override
+    public String getSaleDetail(String date, int startpage, int size, String keyword) throws IOException {
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+
+        //全量匹配和分词匹配
+
+        BoolQueryBuilder boolQueryBuilder = new BoolQueryBuilder();
+        TermQueryBuilder termQueryBuilder = new TermQueryBuilder("dt", date);
+        boolQueryBuilder.filter(termQueryBuilder);
+        MatchQueryBuilder matchQueryBuilder = new MatchQueryBuilder("sku_name", keyword).operator(MatchQueryBuilder.Operator.AND);
+        boolQueryBuilder.must(matchQueryBuilder);
+        searchSourceBuilder.query(boolQueryBuilder);
+        //分组聚合
+        String groupByAge = "groupByAge";
+        String groupByGender = "groupByGender";
+        TermsBuilder groupByAgeTerms = AggregationBuilders.terms(groupByAge);
+        groupByAgeTerms.field("user_age").size(100);
+        searchSourceBuilder.aggregation(groupByAgeTerms);
+        TermsBuilder groupByGenderTerms = AggregationBuilders.terms(groupByGender);
+        groupByGenderTerms.field("user_gender").size(10);
+        searchSourceBuilder.aggregation(groupByGenderTerms);
+
+        //分页
+        searchSourceBuilder.from((startpage-1)*size).size(size);
+
+        //新建一个Search对象
+        Search search = new Search.Builder(searchSourceBuilder.toString())
+                .addIndex("gmall0523_sale_detail-query")
+                .addType("_doc")
+                .build();
+
+        //向es查询数据
+        SearchResult result = jestClient.execute(search);
+        Long total = result.getTotal();
+        List<TermsAggregation.Entry> ageEntry = result.getAggregations().getTermsAggregation(groupByAge).getBuckets();
+        //用户年龄占比封装成Stat类
+        ArrayList<Options> ageOptions = new ArrayList<>();
+        Long lower20 = 0L;
+        Long upper30 = 0L;
+        for (TermsAggregation.Entry entry : ageEntry) {
+            if(Integer.parseInt(entry.getKey()) < 20){
+                lower20+=entry.getCount();
+            }else if(Integer.parseInt(entry.getKey()) >= 30){
+                upper30+=entry.getCount();
+            }
+        }
+        double lower20Ratio = Math.round(lower20 * 1000D / total) / 10D;
+        double upper30Ratio = Math.round(lower20 * 1000D / total) / 10D;
+        ageOptions.add(new Options("20岁以下",lower20Ratio));
+        ageOptions.add(new Options("30岁及30岁以上",lower20Ratio));
+        ageOptions.add(new Options("20岁到30岁",Math.round((100-lower20Ratio-upper30Ratio)*10D)/10D));
+        Stat ageStat = new Stat(ageOptions, "用户年龄占比");
+        //用户性别占比封装成Stat类
+        List<TermsAggregation.Entry> genderEntry = result.getAggregations().getTermsAggregation(groupByGender).getBuckets();
+        ArrayList<Options> genderArrayList = new ArrayList<>();
+        Double maleRatio = 0.0;
+        System.out.println("***********");
+        for (TermsAggregation.Entry entry : genderEntry) {
+            if(entry.getKey().equals("M")){
+                maleRatio =  Math.round(entry.getCount()*1000D/total)/10D;
+            }
+
+        }
+
+        genderArrayList.add(new Options("男",maleRatio));
+        genderArrayList.add(new Options("女",Math.round((100-maleRatio)*10D)/10D));
+        Stat genderStat = new Stat(genderArrayList, "用户性别占比");
+
+        //将detail数据封装成ArrayList
+        ArrayList<Map> detail = new ArrayList<>();
+        List<SearchResult.Hit<Map, Void>> detailHits = result.getHits(Map.class);
+        for (SearchResult.Hit<Map, Void> detailHit : detailHits) {
+            detail.add(detailHit.source);
+        }
+//        jestClient.shutdownClient();
+        
+        //将所有数据放进HashMap
+        ArrayList<Stat> stats = new ArrayList<>();
+        stats.add(ageStat);
+        stats.add(genderStat);
+        HashMap<String, Object> detailsMap = new HashMap<>();
+        detailsMap.put("total",total);
+        detailsMap.put("stat",stats);
+        detailsMap.put("detail",detail);
+        //返回Json字符串
+        return JSON.toJSONString(detailsMap);
     }
 
 }

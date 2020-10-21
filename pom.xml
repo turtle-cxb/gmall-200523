@@ -20,7 +20,6 @@
         <module>gmall-realtime</module>
         <module>dw-chart</module>
         <module>dw-canal</module>
-        <module>dw-canal</module>
     </modules>
 
     <properties>

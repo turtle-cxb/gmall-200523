@@ -1,18 +1,20 @@
 package com.atguigu.gau
 
+import java.text.SimpleDateFormat
 import java.util
+import java.util.Date
 
 import com.alibaba.fastjson.JSON
-import com.atguigu.bean.{OrderDetail, OrderInfo, SaleDetail}
+import com.atguigu.bean.{OrderDetail, OrderInfo, SaleDetail, UserInfo}
 import com.atguigu.constants.GmallConstant
-import com.atguigu.utils.{MykafkaUtil, RedisUtil}
+import com.atguigu.utils.{MyEsUtil, MykafkaUtil, PropertiesUtil, RedisUtil}
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.spark.SparkConf
 import org.apache.spark.streaming.dstream.{DStream, InputDStream}
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import redis.clients.jedis.Jedis
-import collection.JavaConversions._
 
+import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
 
 object SaleAPP {
@@ -108,7 +110,36 @@ object SaleAPP {
       saleDetails.toIterator
     })
 
-    saleDetailStream.print()
+    val saleAPPDstream: DStream[SaleDetail] = saleDetailStream.mapPartitions(iter => {
+      //创建redis连接
+      val redisClient: Jedis = RedisUtil.getJedisClient
+      //从redis中读取数据
+      val details: Iterator[SaleDetail] = iter.map(noUserSaleDetail => {
+        val userInfoString: String = redisClient.get(s"userInfo:${noUserSaleDetail.user_id}")
+        val userInfo: UserInfo = JSON.parseObject(userInfoString,classOf[UserInfo])
+
+        noUserSaleDetail.mergeUserInfo(userInfo)
+        noUserSaleDetail
+      })
+      //关闭连接
+      redisClient.close()
+      details
+    })
+    saleAPPDstream.cache()
+    saleAPPDstream.print()
+    //将数据存入ES
+    val sdf = new SimpleDateFormat("yyyy-MM-dd")
+    saleAPPDstream.foreachRDD(rdd => {
+      rdd.foreachPartition(iter => {
+
+        val tuples: List[(String, SaleDetail)] = iter.toList.map(saleDetail => (s"${saleDetail.order_id}:${saleDetail.order_detail_id}",saleDetail))
+        MyEsUtil.insertBulk(
+          s"${PropertiesUtil.load("config.properties").getProperty("es.sale.prefix")}-${sdf.format(new Date(System.currentTimeMillis()))}",
+          tuples
+        )
+
+      })
+    })
     //开启ssc
     ssc.start()
     ssc.awaitTermination()

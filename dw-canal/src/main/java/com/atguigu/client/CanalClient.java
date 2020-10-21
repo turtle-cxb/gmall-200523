@@ -83,11 +83,6 @@ public class CanalClient {
 
         } else if("order_detail".equals(tableName) && eventType.equals(CanalEntry.EventType.INSERT)){
             rowDataSender(rowDatasList,GmallConstant.KAFKA_TOPIC_ORDER_DETAIL_INFO);
-            try {
-                Thread.sleep(new Random().nextInt(5)*1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
         }
     }
 
